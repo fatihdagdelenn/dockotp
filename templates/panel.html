@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8"/>
+<title>TOTP Panel</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin:0;
+    height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background: radial-gradient(circle at top left, #1f2937, #0f172a);
+    font-family: 'Segoe UI', sans-serif;
+    color:white;
+  }
+  .card {
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    padding:40px;
+    border-radius:20px;
+    box-shadow: 0 0 40px rgba(0,255,255,0.15);
+    text-align:center;
+    width:390px;
+  }
+  h1 {
+    margin: 0 0 8px 0;
+  }
+  .subtitle {
+    margin-bottom: 18px;
+    opacity: .7;
+    font-size: 13px;
+  }
+  .code {
+    font-size:60px;
+    font-weight:800;
+    letter-spacing:8px;
+    margin:18px 0 8px 0;
+    background: linear-gradient(90deg,#00f5ff,#00ff99);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .progress {
+    position:relative;
+    width:120px;
+    height:120px;
+    margin:18px auto 10px auto;
+  }
+  svg { transform: rotate(-90deg); }
+  circle { fill:none; stroke-width:10; }
+  .bg { stroke:rgba(255,255,255,0.1); }
+  .fg {
+    stroke:#00ffcc;
+    stroke-linecap:round;
+    transition: stroke-dashoffset 0.8s linear;
+  }
+  .remaining {
+    position:absolute;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    font-size:24px;
+    font-weight:bold;
+  }
+  .actions {
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  button, a.btn {
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.06);
+    color: white;
+    padding: 10px 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .toast {
+    margin-top: 12px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 160ms ease;
+    color: rgba(0,255,204,0.95);
+  }
+  .toast.show {
+    opacity: 1;
+  }
+  .footer {
+    margin-top:18px;
+    font-size:12px;
+    opacity:0.55;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>{{ name }}</h1>
+  <div class="subtitle">Secure TOTP Panel</div>
+
+  <div class="code" id="code">------</div>
+
+  <div class="progress">
+    <svg width="120" height="120">
+      <circle class="bg" cx="60" cy="60" r="50"></circle>
+      <circle class="fg" cx="60" cy="60" r="50"
+        stroke-dasharray="314"
+        stroke-dashoffset="0"
+        id="progressCircle">
+      </circle>
+    </svg>
+    <div class="remaining" id="ttl">30</div>
+  </div>
+
+  <div class="actions">
+    <button onclick="copyCode()">Kodu Kopyala</button>
+    <a class="btn" href="/download/trayapp.ps1">Tray App İndir</a>
+    <form method="post" action="/reset" onsubmit="return confirm('Kaydı sıfırlamak istiyor musunuz?')" style="display:inline;">
+      <button type="submit">Reset</button>
+    </form>
+  </div>
+
+  <div class="toast" id="toast">Kopyalandı ✅</div>
+  <div class="footer">Kısayol: Ctrl + Shift + C</div>
+</div>
+
+<script>
+const radius = 50;
+const circumference = 2 * Math.PI * radius;
+const circle = document.getElementById('progressCircle');
+const codeEl = document.getElementById('code');
+const ttlEl = document.getElementById('ttl');
+const toastEl = document.getElementById('toast');
+
+circle.style.strokeDasharray = circumference;
+
+function showToast(msg="Kopyalandı ✅") {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  setTimeout(() => toastEl.classList.remove('show'), 1800);
+}
+
+async function copyCode(){
+  const code = codeEl.innerText.trim();
+  if (!code || code === "------") return;
+
+  try {
+    await navigator.clipboard.writeText(code);
+    showToast("Kopyalandı ✅");
+    return;
+  } catch (e) {}
+
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = code;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+
+    if (ok) showToast("Kopyalandı ✅");
+    else showToast("Kopyalama başarısız");
+  } catch (e) {
+    showToast("Clipboard izin hatası");
+  }
+}
+
+async function refresh(){
+  const r = await fetch('/api/otp', { cache: "no-store" });
+  const d = await r.json();
+
+  codeEl.innerText = d.now;
+  ttlEl.innerText = d.remaining;
+
+  const offset = circumference - (d.remaining / 30) * circumference;
+  circle.style.strokeDashoffset = offset;
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) {
+    e.preventDefault();
+    copyCode();
+  }
+});
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
